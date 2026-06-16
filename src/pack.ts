@@ -1,11 +1,12 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const archiver = require('archiver');
-import { createWriteStream, existsSync, readFileSync } from 'fs';
+import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import * as p from '@clack/prompts';
 import { runPackInit } from './pack/pack-init.ts';
-import { validateManifest, type McpbManifest } from './pack/cvm-manifest.ts';
+import { validateManifest, type CvmbManifest } from './pack/cvm-manifest.ts';
+import { computeDirectoryContentHash, signManifest } from './pack/crypto.ts';
 import { BOLD, DIM, RESET } from './constants/ui.ts';
 
 export interface PackOptions {
@@ -33,20 +34,20 @@ export async function pack(targetDir: string = '.', options: PackOptions = {}): 
     }
   }
 
-  let manifest: McpbManifest;
+  let manifest: CvmbManifest;
   try {
     const raw = JSON.parse(readFileSync(manifestPath, 'utf-8'));
     if (!options.noValidate) {
       manifest = validateManifest(raw);
     } else {
-      manifest = raw as McpbManifest;
+      manifest = raw as CvmbManifest;
     }
   } catch (error) {
     p.log.error(`Invalid manifest: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
 
-  const outFileName = options.output || `${manifest.name}-${manifest.version}.mcpb`;
+  const outFileName = options.output || `${manifest.name}-${manifest.version}.cvmb`;
   const outPath = resolve(outFileName);
 
   p.log.info(`Packing ${manifest.name} v${manifest.version}...`);
@@ -65,6 +66,67 @@ export async function pack(targetDir: string = '.', options: PackOptions = {}): 
     );
   }
 
+  // 1. Cryptography Phase: Hashing
+  const sHash = p.spinner();
+  sHash.start('Computing Merkle content hash...');
+  const contentHash = await computeDirectoryContentHash(dir, [
+    '.git',
+    'node_modules',
+    '.DS_Store',
+    '.env',
+    '.cvmb',
+  ]);
+  sHash.stop(`Content hash computed: ${contentHash.slice(0, 16)}...`);
+
+  if (!manifest._meta) manifest._meta = {};
+  if (!manifest._meta['com.contextvm']) manifest._meta['com.contextvm'] = {};
+  manifest._meta['com.contextvm'].content_hash = contentHash;
+
+  // Remove existing signature to prevent invalidation
+  delete manifest._sig;
+
+  // 2. Cryptography Phase: Signing
+  const shouldSign = await p.confirm({
+    message: 'Do you want to cryptographically sign this bundle with a Nostr key?',
+    initialValue: true,
+  });
+
+  if (p.isCancel(shouldSign)) {
+    p.cancel('Operation cancelled.');
+    process.exit(0);
+  }
+
+  if (shouldSign) {
+    const privateKeyHex = await p.password({
+      message: 'Enter your Nostr private key (hex) to sign the bundle:',
+      validate: (value) => {
+        if (!value) return 'Private key is required to sign.';
+        if (!/^[0-9a-fA-F]{64}$/.test(value)) return 'Must be a 64-character hex string.';
+      },
+    });
+
+    if (p.isCancel(privateKeyHex)) {
+      p.cancel('Operation cancelled.');
+      process.exit(0);
+    }
+
+    try {
+      manifest._sig = signManifest(manifest, privateKeyHex as string);
+      p.log.success(`Signed bundle successfully (pubkey: ${manifest._sig.pubkey.slice(0, 8)}...)`);
+    } catch (err) {
+      p.log.error(`Signing failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  } else {
+    p.log.warn(
+      'Creating unsigned bundle. This bundle will trigger warnings when users install it.'
+    );
+  }
+
+  // Save the modified manifest back to disk so the zip includes the hash/sig
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+  // 3. Archive Phase
   await new Promise<void>((resolvePromise, rejectPromise) => {
     const output = createWriteStream(outPath);
     const archive = archiver('zip', {
@@ -86,7 +148,15 @@ export async function pack(targetDir: string = '.', options: PackOptions = {}): 
     archive.glob('**/*', {
       cwd: dir,
       dot: true,
-      ignore: ['.git/**', 'node_modules/.cache/**', '.DS_Store', '.env', '*.mcpb', outFileName],
+      ignore: [
+        '.git/**',
+        'node_modules/.cache/**',
+        '.DS_Store',
+        '.env',
+        '*.cvmb',
+        '*.mcpb',
+        outFileName,
+      ],
     });
 
     archive.finalize();
@@ -99,9 +169,8 @@ ${BOLD}Usage:${RESET}
   cvmi pack [directory] [options]
 
 ${BOLD}Description:${RESET}
-  Package a local MCP server into a distributable MCPB bundle (.mcpb).
-  If no manifest.json exists, an interactive wizard will help you create one
-  with ContextVM-specific extensions (relays, public mode, encryption).
+  Package a local MCP server into a distributable ContextVM bundle (.cvmb).
+  If no manifest.json exists, an interactive wizard will help you create one.
 
 ${BOLD}Options:${RESET}
   --output, -o <path>      Custom output file name
@@ -113,7 +182,7 @@ ${BOLD}Options:${RESET}
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} cvmi pack                       ${DIM}# package current directory${RESET}
   ${DIM}$${RESET} cvmi pack ./my-server           ${DIM}# package specific directory${RESET}
-  ${DIM}$${RESET} cvmi pack -o custom-name.mcpb   ${DIM}# custom output name${RESET}
+  ${DIM}$${RESET} cvmi pack -o custom-name.cvmb   ${DIM}# custom output name${RESET}
   `);
 }
 

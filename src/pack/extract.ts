@@ -2,12 +2,12 @@ import extractZip from 'extract-zip';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
-import { validateManifest, type McpbManifest } from './cvm-manifest.ts';
+import { validateManifest, type CvmbManifest } from './cvm-manifest.ts';
 import { randomBytes } from 'crypto';
 
 export async function extractBundle(
   mcpbPath: string
-): Promise<{ dir: string; manifest: McpbManifest }> {
+): Promise<{ dir: string; manifest: CvmbManifest }> {
   // Use a unique temp directory for extraction
   const extractDir = join(os.tmpdir(), `cvmi-bundle-${randomBytes(8).toString('hex')}`);
 

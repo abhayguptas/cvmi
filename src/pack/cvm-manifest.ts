@@ -1,33 +1,35 @@
 import { z } from 'zod';
-import { DEFAULT_RELAYS } from '../config/index.ts';
 
-// CVM-specific defaults for a bundle
-export const CVMDefaultsSchema = z.object({
-  relays: z.array(z.string()).default(DEFAULT_RELAYS),
-  encryption: z.enum(['required', 'optional', 'disabled']).default('optional'),
-  public: z.boolean().default(false),
+export const UserConfigFieldSchema = z.object({
+  type: z.enum(['string', 'number', 'boolean', 'directory', 'file']),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  required: z.boolean().optional(),
+  default: z.any().optional(),
+  multiple: z.boolean().optional(),
+  sensitive: z.boolean().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
 });
 
-export type CVMDefaults = z.infer<typeof CVMDefaultsSchema>;
+export type UserConfigField = z.infer<typeof UserConfigFieldSchema>;
 
-// The env_mapping contract: maps config keys to env var names
-export const CVMEnvMappingSchema = z
-  .record(z.enum(['relays', 'encryption', 'public', 'private_key']), z.string())
-  .optional();
+export const CVMSigSchema = z.object({
+  pubkey: z.string(),
+  id: z.string(),
+  signature: z.string(),
+  created_at: z.number(),
+});
 
-export type CVMEnvMapping = z.infer<typeof CVMEnvMappingSchema>;
+export type CVMSig = z.infer<typeof CVMSigSchema>;
 
-// Top-level CVM meta namespace
 export const CVMMetaSchema = z.object({
-  transport: z.enum(['stdio', 'cvm']).default('stdio'),
-  env_mapping: CVMEnvMappingSchema,
-  defaults: CVMDefaultsSchema.optional(),
+  content_hash: z.string().optional(),
 });
 
 export type CVMMeta = z.infer<typeof CVMMetaSchema>;
 
-// The full manifest including MCPB and CVM extension
-export const McpbManifestSchema = z
+export const CvmbManifestSchema = z
   .object({
     manifest_version: z.string(),
     name: z.string(),
@@ -44,33 +46,25 @@ export const McpbManifestSchema = z
       entry_point: z.string().optional(),
       image: z.string().optional(),
       compose_file: z.string().optional(),
+      transport: z.enum(['stdio', 'cvm']).default('stdio'),
       mcp_config: z.object({
         command: z.string(),
         args: z.array(z.string()).optional(),
         env: z.record(z.string(), z.string()).optional(),
       }),
     }),
-    user_config: z.record(z.string(), z.any()).optional(),
+    user_config: z.record(z.string(), UserConfigFieldSchema).optional(),
     _meta: z
       .object({
         'com.contextvm': CVMMetaSchema.optional(),
       })
       .optional(),
+    _sig: CVMSigSchema.optional(),
   })
   .passthrough();
 
-export type McpbManifest = z.infer<typeof McpbManifestSchema>;
+export type CvmbManifest = z.infer<typeof CvmbManifestSchema>;
 
-export function validateManifest(data: unknown): McpbManifest {
-  return McpbManifestSchema.parse(data);
+export function validateManifest(data: unknown): CvmbManifest {
+  return CvmbManifestSchema.parse(data);
 }
-
-export const DEFAULT_CVM_META: CVMMeta = {
-  transport: 'stdio',
-  env_mapping: undefined,
-  defaults: {
-    relays: DEFAULT_RELAYS,
-    encryption: 'optional',
-    public: false,
-  },
-};

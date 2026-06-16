@@ -1,7 +1,6 @@
 import * as p from '@clack/prompts';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, basename } from 'path';
-import { DEFAULT_RELAYS } from '../config/index.ts';
 
 export async function runPackInit(dir: string): Promise<boolean> {
   const manifestPath = join(dir, 'manifest.json');
@@ -107,26 +106,6 @@ export async function runPackInit(dir: string): Promise<boolean> {
           ],
           initialValue: 'stdio',
         }),
-      isPublic: () =>
-        p.confirm({
-          message: 'Should this server be public? (accept connections from any pubkey)',
-          initialValue: false,
-        }),
-      relays: () =>
-        p.text({
-          message: 'Default relays (comma-separated)',
-          initialValue: DEFAULT_RELAYS.join(', '),
-        }),
-      encryption: () =>
-        p.select({
-          message: 'Encryption mode',
-          options: [
-            { value: 'required', label: 'Required (NIP-44 encryption)' },
-            { value: 'optional', label: 'Optional (Fallback to unencrypted)' },
-            { value: 'disabled', label: 'Disabled (Unencrypted)' },
-          ],
-          initialValue: 'optional',
-        }),
     },
     {
       onCancel: () => {
@@ -136,13 +115,8 @@ export async function runPackInit(dir: string): Promise<boolean> {
     }
   );
 
-  const relaysList = result.relays
-    .split(',')
-    .map((r) => r.trim())
-    .filter((r) => r);
-
   // Build mcp_config based on server type
-  let mcpConfig: { command: string; args: string[] };
+  let mcpConfig: { command: string; args: string[]; env?: Record<string, string> };
   if (result.type === 'docker') {
     mcpConfig = {
       command: 'docker',
@@ -166,39 +140,26 @@ export async function runPackInit(dir: string): Promise<boolean> {
     };
   }
 
+  // Example of using user_config for CVM relays mapping
+  mcpConfig.env = {
+    CVM_RELAYS: '${user_config.relays}',
+  };
+
   // Build server section
   const server: Record<string, unknown> = {
     type: result.type,
+    transport: result.transport,
     mcp_config: mcpConfig,
   };
+
   if (result.type === 'docker') {
     server.image = result.image;
   } else {
     server.entry_point = result.entryPoint;
   }
 
-  // Build CVM meta
-  const cvmMeta: Record<string, unknown> = {
-    transport: result.transport,
-    defaults: {
-      relays: relaysList,
-      encryption: result.encryption,
-      public: result.isPublic,
-    },
-  };
-
-  // For native CVM transport, add default env_mapping
-  if (result.transport === 'cvm') {
-    cvmMeta.env_mapping = {
-      relays: 'CVM_RELAYS',
-      encryption: 'CVM_ENCRYPTION',
-      public: 'CVM_PUBLIC',
-      private_key: 'CVM_PRIVATE_KEY',
-    };
-  }
-
   const manifest = {
-    manifest_version: '0.3',
+    manifest_version: '1.0',
     name: result.name,
     display_name: result.displayName,
     version: result.version,
@@ -207,8 +168,12 @@ export async function runPackInit(dir: string): Promise<boolean> {
       name: result.author,
     },
     server,
-    _meta: {
-      'com.contextvm': cvmMeta,
+    user_config: {
+      relays: {
+        type: 'string',
+        title: 'Relays (comma separated)',
+        default: 'wss://relay.contextvm.org',
+      },
     },
   };
 

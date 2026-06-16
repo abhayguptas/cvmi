@@ -13,7 +13,6 @@ import { loadConfig, getServeConfig, DEFAULT_RELAYS } from './config/index.ts';
 import { generatePrivateKey, normalizePrivateKey } from './utils/crypto.ts';
 import { waitForShutdownSignal } from './utils/process.ts';
 import { extractBundle } from './pack/extract.ts';
-import { DEFAULT_CVM_META } from './pack/cvm-manifest.ts';
 import fs from 'fs';
 import { BOLD, DIM, RESET } from './constants/ui.ts';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -134,82 +133,142 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
 
   let cleanupPath: string | undefined;
 
-  // Handle .mcpb bundle execution
-  if (target.endsWith('.mcpb')) {
+  // Handle .cvmb / .mcpb bundle execution
+  if (target.endsWith('.cvmb') || target.endsWith('.mcpb')) {
     p.log.info(`Extracting bundle ${target}...`);
     try {
       const { dir, manifest } = await extractBundle(target);
       cleanupPath = dir;
 
-      // Load CVM config from manifest
-      const meta = manifest._meta?.['com.contextvm'] || DEFAULT_CVM_META;
-      const defaults = meta.defaults || DEFAULT_CVM_META.defaults!;
-      const transport = meta.transport || 'stdio';
+      // Import crypto for verification
+      const { computeDirectoryContentHash, verifyManifestSignature } =
+        await import('./pack/crypto.ts');
 
-      // Resolve command and args from manifest
-      target = manifest.server.mcp_config.command.replace(/\$\{__dirname\}/g, dir);
+      // 1. Content Hash Verification
+      const expectedHash = manifest._meta?.['com.contextvm']?.content_hash;
+      if (expectedHash) {
+        const actualHash = await computeDirectoryContentHash(dir, [
+          '.git',
+          'node_modules',
+          '.DS_Store',
+          '.env',
+          '.cvmb',
+          '.mcpb',
+        ]);
+        if (actualHash !== expectedHash) {
+          throw new Error(
+            'Content hash verification failed! The bundle contents have been modified.'
+          );
+        }
+      } else {
+        p.log.warn('No content hash found in manifest. Bundle integrity cannot be verified.');
+      }
+
+      // 2. Signature Verification
+      if (manifest._sig) {
+        verifyManifestSignature(manifest);
+        p.log.success(`Signature verified. Author: ${manifest._sig.pubkey.slice(0, 8)}...`);
+      } else {
+        p.log.warn('No cryptographic signature found. You are running unverified code.');
+        const proceed = await p.confirm({
+          message: 'Do you want to proceed anyway?',
+          initialValue: false,
+        });
+        if (!proceed) process.exit(1);
+      }
+
+      // 3. User Configuration Prompting
+      const userConfigValues: Record<string, any> = {};
+      if (manifest.user_config) {
+        for (const [key, field] of Object.entries(manifest.user_config)) {
+          // Check if env var already satisfies this
+          const existingEnv = process.env[key.toUpperCase()];
+          if (existingEnv !== undefined) {
+            userConfigValues[key] = existingEnv;
+            continue;
+          }
+
+          if (field.type === 'boolean') {
+            userConfigValues[key] = await p.confirm({
+              message: field.title || key,
+              initialValue: field.default ?? false,
+            });
+          } else {
+            const promptMethod = field.sensitive ? p.password : p.text;
+            userConfigValues[key] = await promptMethod({
+              message: `${field.title || key}${field.description ? ` (${field.description})` : ''}`,
+              initialValue: field.default?.toString(),
+              validate: (val) => {
+                if (field.required && !val) return 'This field is required.';
+              },
+            });
+          }
+
+          if (p.isCancel(userConfigValues[key])) {
+            p.cancel('Setup cancelled.');
+            process.exit(0);
+          }
+        }
+      }
+
+      // 4. Resolve command and args from manifest
+      target = manifest.server.mcp_config.command.replace(/\\$\\{__dirname\\}/g, dir);
       const rawArgs = manifest.server.mcp_config.args || [];
-      targetArgs = rawArgs.map((arg) => arg.replace(/\$\{__dirname\}/g, dir));
+      targetArgs = rawArgs.map((arg: string) => {
+        let resolved = arg.replace(/\\$\\{__dirname\\}/g, dir);
+        // Replace ${user_config.X} in args
+        for (const [key, val] of Object.entries(userConfigValues)) {
+          resolved = resolved.replace(
+            new RegExp(`\\$\\{user_config\\.${key}\\}`, 'g'),
+            String(val)
+          );
+        }
+        return resolved;
+      });
 
-      // Merge mcp_config.env into spawn environment (apply ${__dirname} substitution)
+      // 5. Merge mcp_config.env into spawn environment
       const manifestEnv = manifest.server.mcp_config.env;
+      const resolvedManifestEnv: Record<string, string> = {};
       if (manifestEnv) {
-        const resolvedManifestEnv: Record<string, string> = {};
         for (const [key, val] of Object.entries(manifestEnv)) {
-          resolvedManifestEnv[key] = val.replace(/\$\{__dirname\}/g, dir);
+          let resolved = (val as string).replace(/\\$\\{__dirname\\}/g, dir);
+          // Replace ${user_config.X}
+          for (const [cfgKey, cfgVal] of Object.entries(userConfigValues)) {
+            resolved = resolved.replace(
+              new RegExp(`\\$\\{user_config\\.${cfgKey}\\}`, 'g'),
+              String(cfgVal)
+            );
+          }
+          resolvedManifestEnv[key] = resolved;
         }
         Object.assign(serveConfig, {
           env: { ...(serveConfig.env || {}), ...resolvedManifestEnv },
         });
       }
 
+      const transport = manifest.server.transport || 'stdio';
+
       if (transport === 'cvm') {
         // ── Native CVM transport ──
-        // The server uses the CVM SDK directly (NostrServerTransport).
-        // We inject config as environment variables per the env_mapping contract.
-        // No Gateway is used.
-
-        const envMapping = meta.env_mapping;
-
-        // Resolve final config values (CLI flags > config file > manifest defaults)
-        const resolvedRelays = options.relays ?? serveConfig.relays ?? defaults.relays;
-        const resolvedEncryption =
-          options.encryption ?? serveConfig.encryption ?? defaults.encryption;
-        const resolvedPublic = options.public ?? serveConfig.public ?? defaults.public;
-        const resolvedPrivateKey = serveConfig.privateKey ?? generatePrivateKey();
-
-        // Build env vars from the mapping
-        const cvmEnv: Record<string, string> = {};
-        if (envMapping?.relays && resolvedRelays) {
-          cvmEnv[envMapping.relays] = Array.isArray(resolvedRelays)
-            ? resolvedRelays.join(',')
-            : resolvedRelays;
-        }
-        if (envMapping?.encryption && resolvedEncryption) {
-          cvmEnv[envMapping.encryption] = resolvedEncryption;
-        }
-        if (envMapping?.public) {
-          cvmEnv[envMapping.public] = String(resolvedPublic ?? false);
-        }
-        if (envMapping?.private_key) {
-          cvmEnv[envMapping.private_key] = normalizePrivateKey(resolvedPrivateKey);
-        }
-
         p.log.info(`Transport: cvm (native CVM server, no Gateway)`);
+
+        // We ensure standard CVM vars are set if user_config resolved them
+        const cvmEnv = {
+          ...process.env,
+          ...(serveConfig.env || {}),
+        };
+
         if (options.verbose) {
-          p.log.message(`Injected env vars: ${Object.keys(cvmEnv).join(', ')}`);
+          p.log.message(
+            `Injected env vars from bundle: ${Object.keys(resolvedManifestEnv).join(', ')}`
+          );
         }
 
-        // Spawn the server process directly with injected env vars
         const { spawn } = await import('child_process');
         const normalized = normalizeCommandAndArgs(target, targetArgs);
         const child = spawn(normalized.command, normalized.args, {
           stdio: 'inherit',
-          env: {
-            ...process.env,
-            ...cvmEnv,
-            ...(serveConfig.env || {}),
-          },
+          env: cvmEnv,
         });
 
         p.outro(pc.green('CVM native server started. Press Ctrl+C to stop.'));
@@ -226,18 +285,28 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
         process.exit(0);
       } else {
         // ── stdio transport (default) ──
-        // Gateway wraps the process. Apply manifest defaults to serveConfig.
-        if (options.relays === undefined && !config.serve?.relays) {
-          serveConfig.relays = defaults.relays;
-        }
-        if (options.public === undefined && !config.serve?.public) {
-          serveConfig.public = defaults.public;
-        }
-        if (options.encryption === undefined && !config.serve?.encryption) {
-          serveConfig.encryption = defaults.encryption as EncryptionMode;
-        }
-
         p.log.info(`Transport: stdio (Gateway wraps the server)`);
+
+        // If the bundle user_config provided typical CVM fields, use them to configure gateway
+        if (options.relays === undefined && !config.serve?.relays && userConfigValues.relays) {
+          serveConfig.relays = String(userConfigValues.relays)
+            .split(',')
+            .map((r) => r.trim());
+        }
+        if (
+          options.public === undefined &&
+          !config.serve?.public &&
+          userConfigValues.public !== undefined
+        ) {
+          serveConfig.public = Boolean(userConfigValues.public);
+        }
+        if (
+          options.encryption === undefined &&
+          !config.serve?.encryption &&
+          userConfigValues.encryption
+        ) {
+          serveConfig.encryption = userConfigValues.encryption as EncryptionMode;
+        }
       }
     } catch (error) {
       p.log.error(error instanceof Error ? error.message : String(error));
