@@ -207,10 +207,10 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
       }
 
       // 4. Resolve command and args from manifest
-      target = manifest.server.mcp_config.command.replace(/\\$\\{__dirname\\}/g, dir);
+      target = manifest.server.mcp_config.command.replace(/\$\{__dirname\}/g, dir);
       const rawArgs = manifest.server.mcp_config.args || [];
       targetArgs = rawArgs.map((arg: string) => {
-        let resolved = arg.replace(/\\$\\{__dirname\\}/g, dir);
+        let resolved = arg.replace(/\$\{__dirname\}/g, dir);
         // Replace ${user_config.X} in args
         for (const [key, val] of Object.entries(userConfigValues)) {
           resolved = resolved.replace(
@@ -226,7 +226,7 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
       const resolvedManifestEnv: Record<string, string> = {};
       if (manifestEnv) {
         for (const [key, val] of Object.entries(manifestEnv)) {
-          let resolved = (val as string).replace(/\\$\\{__dirname\\}/g, dir);
+          let resolved = (val as string).replace(/\$\{__dirname\}/g, dir);
           // Replace ${user_config.X}
           for (const [cfgKey, cfgVal] of Object.entries(userConfigValues)) {
             resolved = resolved.replace(
