@@ -6,13 +6,13 @@ import { validateManifest, type CvmbManifest } from './cvm-manifest.ts';
 import { randomBytes } from 'crypto';
 
 export async function extractBundle(
-  mcpbPath: string
+  bundlePath: string
 ): Promise<{ dir: string; manifest: CvmbManifest }> {
   // Use a unique temp directory for extraction
   const extractDir = join(os.tmpdir(), `cvmi-bundle-${randomBytes(8).toString('hex')}`);
 
   try {
-    await extractZip(mcpbPath, { dir: extractDir });
+    await extractZip(bundlePath, { dir: extractDir });
   } catch (err) {
     throw new Error(
       `Failed to extract bundle: ${err instanceof Error ? err.message : String(err)}`

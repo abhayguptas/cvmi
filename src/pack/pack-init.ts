@@ -1,6 +1,7 @@
 import * as p from '@clack/prompts';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, basename } from 'path';
+import { CVM_MANIFEST_VERSION } from './constants.ts';
 
 export async function runPackInit(dir: string): Promise<boolean> {
   const manifestPath = join(dir, 'manifest.json');
@@ -141,9 +142,11 @@ export async function runPackInit(dir: string): Promise<boolean> {
   }
 
   // Example of using user_config for CVM relays mapping
-  mcpConfig.env = {
-    CVM_RELAYS: '${user_config.relays}',
-  };
+  if (result.transport === 'cvm') {
+    mcpConfig.env = {
+      CVM_RELAYS: '${user_config.relays}',
+    };
+  }
 
   // Build server section
   const server: Record<string, unknown> = {
@@ -158,8 +161,8 @@ export async function runPackInit(dir: string): Promise<boolean> {
     server.entry_point = result.entryPoint;
   }
 
-  const manifest = {
-    manifest_version: '1.0',
+  const manifest: Record<string, any> = {
+    manifest_version: CVM_MANIFEST_VERSION,
     name: result.name,
     display_name: result.displayName,
     version: result.version,
@@ -168,14 +171,17 @@ export async function runPackInit(dir: string): Promise<boolean> {
       name: result.author,
     },
     server,
-    user_config: {
+  };
+
+  if (result.transport === 'cvm') {
+    manifest.user_config = {
       relays: {
         type: 'string',
         title: 'Relays (comma separated)',
         default: 'wss://relay.contextvm.org',
       },
-    },
-  };
+    };
+  }
 
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
   p.log.success(`Created manifest.json in ${dir}`);

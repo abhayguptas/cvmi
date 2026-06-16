@@ -5,6 +5,7 @@ import { schnorr } from '@noble/curves/secp256k1.js';
 import { readdir, readFile } from 'fs/promises';
 import { join, relative } from 'path';
 import type { CvmbManifest } from './cvm-manifest.ts';
+import { CONTENT_HASH_IGNORE_PATTERNS } from './constants.ts';
 
 /**
  * Canonicalizes a manifest object according to RFC 8785.
@@ -85,10 +86,13 @@ export function verifyManifestSignature(manifest: CvmbManifest): boolean {
  * 1. Hashes each file's contents (excluding manifest.json and ignored patterns).
  * 2. Sorts paths alphabetically.
  * 3. Concatenates path:hash\n and hashes the result.
+ *
+ * Note: node_modules is ignored to avoid hashing hundreds of megabytes of dependencies.
+ * Therefore, node_modules integrity relies on lockfiles (package-lock.json, etc.) being in the hash.
  */
 export async function computeDirectoryContentHash(
   dir: string,
-  ignoreList: string[] = ['.git', 'node_modules', '.DS_Store', '.env']
+  ignoreList: string[] = CONTENT_HASH_IGNORE_PATTERNS
 ): Promise<string> {
   const allFiles = await getFilesRecursive(dir);
 
@@ -98,9 +102,10 @@ export async function computeDirectoryContentHash(
     if (relPath === 'manifest.json') return false;
     if (relPath.endsWith('.cvmb') || relPath.endsWith('.mcpb')) return false;
 
-    // Simple ignore logic
+    // Path-segment-aware ignore logic
+    const segments = relPath.split(/[/\\]/);
     for (const ignore of ignoreList) {
-      if (relPath.includes(ignore) || relPath.startsWith(ignore)) return false;
+      if (segments.includes(ignore)) return false;
     }
     return true;
   });

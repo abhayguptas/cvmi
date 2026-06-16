@@ -1,13 +1,14 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const archiver = require('archiver');
-import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'fs';
+import { createWriteStream, existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import * as p from '@clack/prompts';
 import { runPackInit } from './pack/pack-init.ts';
 import { validateManifest, type CvmbManifest } from './pack/cvm-manifest.ts';
 import { computeDirectoryContentHash, signManifest } from './pack/crypto.ts';
 import { BOLD, DIM, RESET } from './constants/ui.ts';
+import { BUNDLE_IGNORE_PATTERNS, CONTENT_HASH_IGNORE_PATTERNS } from './pack/constants.ts';
 
 export interface PackOptions {
   output?: string;
@@ -69,13 +70,7 @@ export async function pack(targetDir: string = '.', options: PackOptions = {}): 
   // 1. Cryptography Phase: Hashing
   const sHash = p.spinner();
   sHash.start('Computing Merkle content hash...');
-  const contentHash = await computeDirectoryContentHash(dir, [
-    '.git',
-    'node_modules',
-    '.DS_Store',
-    '.env',
-    '.cvmb',
-  ]);
+  const contentHash = await computeDirectoryContentHash(dir, CONTENT_HASH_IGNORE_PATTERNS);
   sHash.stop(`Content hash computed: ${contentHash.slice(0, 16)}...`);
 
   if (!manifest._meta) manifest._meta = {};
@@ -123,9 +118,6 @@ export async function pack(targetDir: string = '.', options: PackOptions = {}): 
     );
   }
 
-  // Save the modified manifest back to disk so the zip includes the hash/sig
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-
   // 3. Archive Phase
   await new Promise<void>((resolvePromise, rejectPromise) => {
     const output = createWriteStream(outPath);
@@ -144,17 +136,16 @@ export async function pack(targetDir: string = '.', options: PackOptions = {}): 
 
     archive.pipe(output);
 
+    // Add the signed/hashed manifest directly from memory
+    archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
+
     // Add all files from directory, excluding some common things we don't want
     archive.glob('**/*', {
       cwd: dir,
       dot: true,
       ignore: [
-        '.git/**',
-        'node_modules/.cache/**',
-        '.DS_Store',
-        '.env',
-        '*.cvmb',
-        '*.mcpb',
+        ...BUNDLE_IGNORE_PATTERNS,
+        'manifest.json', // Excluded so we don't add the unsigned source file
         outFileName,
       ],
     });

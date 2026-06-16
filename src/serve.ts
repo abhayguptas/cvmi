@@ -18,6 +18,12 @@ import { BOLD, DIM, RESET } from './constants/ui.ts';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { savePrivateKeyToEnv } from './config/loader.ts';
 import { normalizeCommandAndArgs, splitCommandString } from './utils/command.ts';
+import { computeDirectoryContentHash, verifyManifestSignature } from './pack/crypto.ts';
+import { CONTENT_HASH_IGNORE_PATTERNS } from './pack/constants.ts';
+
+function escapeRegExp(string: string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 function isHttpUrl(value: string): boolean {
   try {
@@ -140,21 +146,10 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
       const { dir, manifest } = await extractBundle(target);
       cleanupPath = dir;
 
-      // Import crypto for verification
-      const { computeDirectoryContentHash, verifyManifestSignature } =
-        await import('./pack/crypto.ts');
-
       // 1. Content Hash Verification
       const expectedHash = manifest._meta?.['com.contextvm']?.content_hash;
       if (expectedHash) {
-        const actualHash = await computeDirectoryContentHash(dir, [
-          '.git',
-          'node_modules',
-          '.DS_Store',
-          '.env',
-          '.cvmb',
-          '.mcpb',
-        ]);
+        const actualHash = await computeDirectoryContentHash(dir, CONTENT_HASH_IGNORE_PATTERNS);
         if (actualHash !== expectedHash) {
           throw new Error(
             'Content hash verification failed! The bundle contents have been modified.'
@@ -219,7 +214,7 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
         // Replace ${user_config.X} in args
         for (const [key, val] of Object.entries(userConfigValues)) {
           resolved = resolved.replace(
-            new RegExp(`\\$\\{user_config\\.${key}\\}`, 'g'),
+            new RegExp(`\\$\\{user_config\\.${escapeRegExp(key)}\\}`, 'g'),
             String(val)
           );
         }
@@ -235,7 +230,7 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
           // Replace ${user_config.X}
           for (const [cfgKey, cfgVal] of Object.entries(userConfigValues)) {
             resolved = resolved.replace(
-              new RegExp(`\\$\\{user_config\\.${cfgKey}\\}`, 'g'),
+              new RegExp(`\\$\\{user_config\\.${escapeRegExp(cfgKey)}\\}`, 'g'),
               String(cfgVal)
             );
           }
