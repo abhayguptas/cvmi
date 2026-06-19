@@ -1,12 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import {
-  canonicalizeManifest,
-  computeManifestId,
-  signManifest,
-  verifyManifestSignature,
-} from './crypto.ts';
+import { canonicalizeManifest, signManifest, verifyManifestSignature } from './crypto.ts';
 import type { CvmbManifest } from './cvm-manifest.ts';
-import { generatePrivateKey } from '../utils/crypto.ts'; // assuming this exists and returns hex
+import { generatePrivateKey } from '../utils/crypto.ts'; // returns 64-char hex
 
 describe('crypto', () => {
   const dummyManifest: CvmbManifest = {
@@ -52,45 +47,48 @@ describe('crypto', () => {
     expect(json1).toBe(json2);
   });
 
-  it('should compute consistent manifest ID', () => {
-    const id1 = computeManifestId(dummyManifest);
-    const id2 = computeManifestId(dummyManifest);
-    expect(id1).toBe(id2);
-    expect(id1).toMatch(/^[a-f0-9]{64}$/); // SHA-256 hex
+  it('should produce a well-formed _sig block', () => {
+    const privKey = generatePrivateKey(); // 64-char hex
+    const sig = signManifest(dummyManifest, privKey);
+
+    expect(sig.pubkey).toMatch(/^[a-f0-9]{64}$/); // Nostr pubkey (x-only)
+    expect(sig.id).toMatch(/^[a-f0-9]{64}$/); // NIP-01 event id (sha256)
+    expect(sig.signature).toMatch(/^[a-f0-9]{128}$/); // Schnorr signature
+    expect(typeof sig.created_at).toBe('number');
   });
 
-  it('should successfully sign and verify a manifest', () => {
-    const privKey = generatePrivateKey(); // generates a 64-char hex
-    const signedManifest = { ...dummyManifest };
-
+  it('should successfully sign and verify a manifest', async () => {
+    const privKey = generatePrivateKey();
+    const signedManifest: CvmbManifest = { ...dummyManifest };
     signedManifest._sig = signManifest(signedManifest, privKey);
 
-    expect(signedManifest._sig.pubkey).toMatch(/^[a-f0-9]{64}$/);
-    expect(signedManifest._sig.signature).toMatch(/^[a-f0-9]{128}$/);
-
     // Verification should pass without throwing
-    expect(verifyManifestSignature(signedManifest)).toBe(true);
+    await expect(Promise.resolve(verifyManifestSignature(signedManifest))).resolves.toBe(true);
   });
 
   it('should fail verification if manifest is tampered', () => {
     const privKey = generatePrivateKey();
-    const signedManifest = { ...dummyManifest };
+    const signedManifest: CvmbManifest = { ...dummyManifest } as CvmbManifest;
     signedManifest._sig = signManifest(signedManifest, privKey);
 
-    // Tamper with the manifest
+    // Tamper with the manifest after signing
     signedManifest.version = '1.0.1';
 
-    expect(() => verifyManifestSignature(signedManifest)).toThrow('Manifest ID mismatch');
+    expect(() => verifyManifestSignature(signedManifest)).toThrow('Invalid manifest signature');
   });
 
   it('should fail verification if signature is tampered', () => {
     const privKey = generatePrivateKey();
-    const signedManifest = { ...dummyManifest };
+    const signedManifest: CvmbManifest = { ...dummyManifest } as CvmbManifest;
     signedManifest._sig = signManifest(signedManifest, privKey);
 
     // Tamper with signature
     signedManifest._sig.signature = signedManifest._sig.signature.replace(/0/g, '1');
 
-    expect(() => verifyManifestSignature(signedManifest)).toThrow('Invalid Schnorr signature');
+    expect(() => verifyManifestSignature(signedManifest)).toThrow('Invalid manifest signature');
+  });
+
+  it('should fail verification if unsigned', () => {
+    expect(() => verifyManifestSignature({ ...dummyManifest })).toThrow('Manifest is not signed');
   });
 });

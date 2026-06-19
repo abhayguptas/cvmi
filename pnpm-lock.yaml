@@ -41,9 +41,6 @@ importers:
       '@clack/prompts':
         specifier: ^0.11.0
         version: 0.11.0
-      '@noble/curves':
-        specifier: 2.0.1
-        version: 2.0.1
       '@types/archiver':
         specifier: ^8.0.0
         version: 8.0.0

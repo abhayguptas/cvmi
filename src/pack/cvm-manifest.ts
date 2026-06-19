@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { CVM_MANIFEST_VERSION } from './constants.ts';
 
 export const UserConfigFieldSchema = z.object({
   type: z.enum(['string', 'number', 'boolean', 'directory', 'file']),
@@ -32,10 +31,10 @@ export type CVMMeta = z.infer<typeof CVMMetaSchema>;
 
 export const CvmbManifestSchema = z
   .object({
-    manifest_version: z.string().default(CVM_MANIFEST_VERSION),
+    manifest_version: z.string(),
     name: z.string(),
     display_name: z.string().optional(),
-    version: z.string().regex(/^\d+\.\d+\.\d+/, 'Must be a valid semver version'),
+    version: z.string().regex(/^\d+\.\d+\.\d+$/, 'Must be a valid semver version (e.g. 1.0.0)'),
     description: z.string(),
     author: z.object({
       name: z.string(),

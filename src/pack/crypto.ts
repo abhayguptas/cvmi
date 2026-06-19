@@ -1,18 +1,18 @@
 import canonicalize from 'canonicalize';
 import { createHash } from 'crypto';
-import { getPublicKey } from 'nostr-tools';
-import { schnorr } from '@noble/curves/secp256k1.js';
+import { finalizeEvent, verifyEvent } from 'nostr-tools';
+import { hexToBytes } from 'nostr-tools/utils';
 import { readdir, readFile } from 'fs/promises';
 import { join, relative } from 'path';
 import type { CvmbManifest } from './cvm-manifest.ts';
-import { CONTENT_HASH_IGNORE_PATTERNS } from './constants.ts';
+import { CONTENT_HASH_IGNORE_PATTERNS, MANIFEST_SIGNATURE_KIND } from './constants.ts';
 
 /**
  * Canonicalizes a manifest object according to RFC 8785.
- * If the manifest contains a `_sig` field, it is removed before canonicalization.
+ * The `_sig` field is removed before canonicalization so the digest is stable
+ * across signing and verification.
  */
 export function canonicalizeManifest(manifest: CvmbManifest): string {
-  // Create a copy without the _sig field
   const { _sig, ...manifestWithoutSig } = manifest;
   const canonical = canonicalize(manifestWithoutSig);
   if (!canonical) {
@@ -22,60 +22,65 @@ export function canonicalizeManifest(manifest: CvmbManifest): string {
 }
 
 /**
- * Computes the SHA-256 ID of the canonicalized manifest.
- */
-export function computeManifestId(manifest: CvmbManifest): string {
-  const canonical = canonicalizeManifest(manifest);
-  return createHash('sha256').update(canonical).digest('hex');
-}
-
-/**
- * Signs a manifest using a Nostr private key (hex format).
+ * Signs a manifest using the author's Nostr private key (64-char hex).
+ *
+ * The canonical manifest becomes the `content` of a Nostr signing event, which
+ * is signed with nostr-tools' `finalizeEvent`. This binds the author's Nostr
+ * identity to the exact manifest bytes while delegating all curve math to
+ * nostr-tools (no direct use of @noble/curves).
+ *
  * Returns the complete `_sig` object to be injected into the manifest.
  */
 export function signManifest(manifest: CvmbManifest, privateKeyHex: string) {
-  const id = computeManifestId(manifest);
-
-  // Convert hex strings to Uint8Arrays for @noble/curves
-  const msgBytes = Uint8Array.from(Buffer.from(id, 'hex'));
-  const privBytes = Uint8Array.from(Buffer.from(privateKeyHex, 'hex'));
-
-  const signature = schnorr.sign(msgBytes, privBytes);
-  const pubkey = getPublicKey(Uint8Array.from(Buffer.from(privateKeyHex, 'hex')));
-
-  // @noble/curves schnorr.sign returns a Uint8Array, we need hex
-  const signatureHex = Buffer.from(signature).toString('hex');
+  const content = canonicalizeManifest(manifest);
+  const event = finalizeEvent(
+    {
+      kind: MANIFEST_SIGNATURE_KIND,
+      tags: [],
+      content,
+      created_at: Math.floor(Date.now() / 1000),
+    },
+    hexToBytes(privateKeyHex)
+  );
 
   return {
-    pubkey,
-    id,
-    signature: signatureHex,
-    created_at: Math.floor(Date.now() / 1000),
+    pubkey: event.pubkey,
+    id: event.id,
+    signature: event.sig,
+    created_at: event.created_at,
   };
 }
 
 /**
  * Verifies the `_sig` block of a manifest.
- * Throws an error if the signature is missing or invalid.
+ *
+ * Reconstructs the signing event from the canonical manifest plus the `_sig`
+ * fields and delegates to nostr-tools' `verifyEvent`, which checks both the
+ * NIP-01 event id and the Schnorr signature.
+ *
+ * Throws an error if the manifest is unsigned or the signature is invalid.
  */
 export function verifyManifestSignature(manifest: CvmbManifest): boolean {
-  if (!manifest._sig) {
+  const sig = manifest._sig;
+  if (!sig) {
     throw new Error('Manifest is not signed');
   }
 
-  const expectedId = computeManifestId(manifest);
-  if (manifest._sig.id !== expectedId) {
-    throw new Error('Manifest ID mismatch. The manifest has been modified after signing.');
-  }
+  const content = canonicalizeManifest(manifest);
+  const event = {
+    kind: MANIFEST_SIGNATURE_KIND,
+    tags: [],
+    content,
+    pubkey: sig.pubkey,
+    id: sig.id,
+    sig: sig.signature,
+    created_at: sig.created_at,
+  };
 
-  const sigBytes = Uint8Array.from(Buffer.from(manifest._sig.signature, 'hex'));
-  const msgBytes = Uint8Array.from(Buffer.from(manifest._sig.id, 'hex'));
-  const pubBytes = Uint8Array.from(Buffer.from(manifest._sig.pubkey, 'hex'));
-
-  const isValid = schnorr.verify(sigBytes, msgBytes, pubBytes);
-
-  if (!isValid) {
-    throw new Error('Invalid Schnorr signature');
+  if (!verifyEvent(event)) {
+    throw new Error(
+      'Invalid manifest signature: the manifest was modified after signing or the signature is corrupt.'
+    );
   }
 
   return true;

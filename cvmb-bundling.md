@@ -275,45 +275,64 @@ Future CVM-specific fields (relay defaults, encryption preferences, pricing conf
 
 ## Signing and Verification
 
-Bundles are signed using the author's Nostr keypair. The signature lives in the `_sig` field:
+Bundles are signed using the author's Nostr keypair. **All cryptography is delegated to [`nostr-tools`](https://github.com/nbd-wtf/nostr-tools)** (`finalizeEvent` / `verifyEvent`) — `cvmi` performs no manual curve operations and does not depend on `@noble/curves` directly. The signature lives in the `_sig` field:
 
 ```json
 {
   "_sig": {
     "pubkey": "abc123...",
-    "id": "sha256 of canonical manifest (without _sig)",
+    "id": "def456...",
     "signature": "86f25c...",
     "created_at": 1718123456
   }
 }
 ```
 
+### The Signing Event
+
+The signature is a real Nostr event (never published to relays) whose `content` is the canonical manifest. Using `finalizeEvent` / `verifyEvent` binds the author's Nostr identity to the exact manifest bytes without any manual curve math:
+
+```json
+{
+  "kind": "<MANIFEST_SIGNATURE_KIND>",
+  "tags": [],
+  "content": "<RFC 8785 canonical manifest, _sig removed>",
+  "created_at": 1718123456,
+  "pubkey": "abc123...",
+  "id": "def456...",
+  "sig": "86f25c..."
+}
+```
+
+`MANIFEST_SIGNATURE_KIND` is a fixed constant defined by the tooling. Its value is arbitrary (the event is never relayed); it only needs to be identical at sign and verify time. Only `pubkey`, `id`, `sig`, and `created_at` are stored in the manifest's `_sig`; the rest is reconstructed during verification.
+
 ### `_sig` Fields
 
-| Field        | Type   | Description                                                           |
-| ------------ | ------ | --------------------------------------------------------------------- |
-| `pubkey`     | string | Author's Nostr public key (hex)                                       |
-| `id`         | string | SHA-256 of the canonical manifest JSON (with `_sig` removed)          |
-| `signature`  | string | Schnorr signature of `id` using the author's private key (hex)        |
-| `created_at` | number | Unix timestamp of when the signature was created (informational only) |
+| Field        | Type   | Description                                                                                       |
+| ------------ | ------ | ------------------------------------------------------------------------------------------------- |
+| `pubkey`     | string | Author's Nostr public key (hex, x-only)                                                           |
+| `id`         | string | NIP-01 event id: SHA-256 of the serialized signing event, which commits to the canonical manifest |
+| `signature`  | string | Schnorr (BIP-340) signature of `id`, produced by `nostr-tools` `finalizeEvent` (hex)              |
+| `created_at` | number | Unix timestamp of when the signature was created (informational only)                             |
 
 ### Signing Flow
 
 1. Compute `content_hash` over all bundle files (see Content Integrity)
 2. Insert `content_hash` into `_meta.com.contextvm`
 3. Remove `_sig` from the manifest (if present)
-4. Canonicalize the manifest per RFC 8785 (sorted keys, no whitespace)
-5. Compute `id = SHA-256(canonical_manifest)` — this covers `content_hash`
-6. Sign `id` with the author's Nostr private key: `signature = schnorr_sign(id, nsec)`
-7. Insert `_sig` with `pubkey`, `id`, `signature`, `created_at`
+4. Canonicalize the manifest per RFC 8785 (sorted keys, no whitespace) → `content`
+5. Build a Nostr signing event `{ kind, tags: [], content, created_at }`
+6. Sign it with the author's Nostr private key via `finalizeEvent` → `{ pubkey, id, sig }`
+7. Insert `_sig` with `pubkey`, `id`, `signature` (= the event's `sig`), `created_at`
 8. Pack the ZIP
 
 ### Verification Flow
 
 1. Extract the ZIP
 2. Verify `content_hash` matches actual bundle files (see Content Integrity)
-3. Remove `_sig` from manifest, canonicalize per RFC 8785, compute SHA-256 → must equal `_sig.id`
-4. Verify Schnorr signature: `schnorr_verify(_sig.id, _sig.signature, _sig.pubkey)` must pass
+3. Remove `_sig` from the manifest, canonicalize per RFC 8785 → `content`
+4. Reconstruct the signing event `{ kind, tags: [], content, pubkey: _sig.pubkey, id: _sig.id, sig: _sig.signature, created_at: _sig.created_at }`
+5. Verify with `verifyEvent` — this checks both the NIP-01 event `id` and the Schnorr signature
 
 All checks pass → valid. Any check fails → invalid.
 
