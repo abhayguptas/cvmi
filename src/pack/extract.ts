@@ -1,5 +1,5 @@
 import extractZip from 'extract-zip';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
 import { validateManifest, type CvmbManifest } from './cvm-manifest.ts';
@@ -10,6 +10,8 @@ export async function extractBundle(
 ): Promise<{ dir: string; manifest: CvmbManifest }> {
   // Use a unique temp directory for extraction
   const extractDir = join(os.tmpdir(), `cvmi-bundle-${randomBytes(8).toString('hex')}`);
+  // Ensure the directory is only readable/writable by the current user
+  mkdirSync(extractDir, { mode: 0o700, recursive: true });
 
   try {
     await extractZip(bundlePath, { dir: extractDir });

@@ -39,7 +39,7 @@ export async function pack(targetDir: string = '.', options: PackOptions = {}): 
   try {
     const raw = JSON.parse(readFileSync(manifestPath, 'utf-8'));
     if (!options.noValidate) {
-      manifest = validateManifest(raw);
+      manifest = validateManifest(raw, true);
     } else {
       manifest = raw as CvmbManifest;
     }

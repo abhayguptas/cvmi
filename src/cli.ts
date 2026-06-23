@@ -65,7 +65,7 @@ function showBanner(): void {
   console.log();
   const entries: [string, string][] = [
     ['npx cvmi add [options]', 'Install ContextVM skills'],
-    ['npx cvmi pack [options]', 'Package a server into an MCPB bundle'],
+    ['npx cvmi pack [options]', 'Package a server into a CVMB bundle'],
     ['npx cvmi serve [options] -- <cmd>', 'Expose MCP server over Nostr'],
     ['npx cvmi use <pubkey>', 'Connect to Nostr MCP server'],
     ['npx cvmi config <command>', 'Manage saved server aliases'],
@@ -95,7 +95,7 @@ ${BOLD}Commands:${RESET}
   remove, rm, r          Remove installed skills
   list, ls               List installed skills
   init [name]            Initialize a new skill
-  pack                   Package an MCP server into an MCPB bundle
+  pack                   Package an MCP server into a CVMB bundle
   sync                   Sync skills from node_modules
   serve                  Expose an MCP server over Nostr
   use                    Connect to a remote Nostr MCP server
@@ -120,9 +120,9 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} cvmi add                          ${DIM}# install embedded ContextVM skills${RESET}
   ${DIM}$${RESET} cvmi add --skill overview         ${DIM}# install a specific skill${RESET}
   ${DIM}$${RESET} cvmi remove <skill>               ${DIM}# remove an installed skill${RESET}
-  ${DIM}$${RESET} cvmi pack                         ${DIM}# pack a server into .mcpb bundle${RESET}
+  ${DIM}$${RESET} cvmi pack                         ${DIM}# pack a server into .cvmb bundle${RESET}
   ${DIM}$${RESET} cvmi serve -- <command-or-url>    ${DIM}# start gateway, expose an already existing server (stdio or http) over nostr${RESET}
-  ${DIM}$${RESET} cvmi serve my-server.mcpb         ${DIM}# serve a packed mcpb bundle over nostr${RESET}
+  ${DIM}$${RESET} cvmi serve my-server.cvmb         ${DIM}# serve a packed cvmb bundle over nostr${RESET}
   ${DIM}$${RESET} cvmi use <server-pubkey>          ${DIM}# connect to remote MCP server, expose it as stdio${RESET}
   ${DIM}$${RESET} cvmi discover                     ${DIM}# find public ContextVM servers${RESET}
   ${DIM}$${RESET} cvmi call <server>                ${DIM}# list remote capabilities${RESET}

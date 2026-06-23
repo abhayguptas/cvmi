@@ -145,6 +145,11 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
     try {
       const { dir, manifest } = await extractBundle(target);
       cleanupPath = dir;
+      process.on('exit', () => {
+        if (cleanupPath && fs.existsSync(cleanupPath)) {
+          fs.rmSync(cleanupPath, { recursive: true, force: true });
+        }
+      });
 
       // 1. Content Hash Verification
       const expectedHash = manifest._meta?.['com.contextvm']?.content_hash;
@@ -431,7 +436,7 @@ ${BOLD}Arguments:${RESET}
                             Can also be specified in config file under serve.command
   <mcp-server-url>        If the first argument is an http(s) URL, cvmi will treat it as a Streamable HTTP MCP server
                             and connect via HTTP instead of spawning a local process.
-  <bundle.mcpb>           If the first argument is an .mcpb file, cvmi will extract the bundle,
+  <bundle.cvmb>           If the first argument is an .cvmb file, cvmi will extract the bundle,
                             read the manifest, apply CVM config defaults, and spawn the server.
 
 ${BOLD}Config keys:${RESET}
@@ -491,7 +496,7 @@ ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} cvmi serve https://mcp.server.com ${DIM}# expose a remote Streamable HTTP MCP server over Nostr${RESET}
   ${DIM}$${RESET} cvmi serve npx -y @modelcontextprotocol/server-prompt-generator --public ${DIM}# public server${RESET}
   ${DIM}$${RESET} cvmi serve python /path/to/server.py --relays wss://my-relay.com ${DIM}# custom relay${RESET}
-  ${DIM}$${RESET} cvmi serve my-server-1.0.0.mcpb ${DIM}# run an MCPB bundle over Nostr${RESET}
+  ${DIM}$${RESET} cvmi serve my-server-1.0.0.cvmb ${DIM}# run a CVMB bundle over Nostr${RESET}
   ${DIM}$${RESET} cvmi serve --help ${DIM}# show this help${RESET}
   `);
 }
