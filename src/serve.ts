@@ -142,9 +142,15 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
   // Handle .cvmb / .mcpb bundle execution
   if (target.endsWith('.cvmb') || target.endsWith('.mcpb')) {
     p.log.info(`Extracting bundle ${target}...`);
+    // Tracks whether the extracted dir has been handed off to the long-lived
+    // gateway (stdio transport). When true, the `finally` below must NOT remove
+    // it — end-of-function cleanup + the `exit` hook own its lifecycle instead.
+    let handedOffToGateway = false;
     try {
       const { dir, manifest } = await extractBundle(target);
       cleanupPath = dir;
+      // Synchronous backstop: guarantees cleanup on crashes / unexpected exits
+      // that bypass the `finally` (e.g. uncaught throws, process.exit()).
       process.on('exit', () => {
         if (cleanupPath && fs.existsSync(cleanupPath)) {
           fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -277,11 +283,7 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
         p.log.message(`\n${signal} received. Shutting down...`);
         child.kill('SIGTERM');
 
-        if (cleanupPath && fs.existsSync(cleanupPath)) {
-          p.log.message(`Cleaning up temporary bundle at ${cleanupPath}`);
-          fs.rmSync(cleanupPath, { recursive: true, force: true });
-        }
-
+        // The `finally` block cleans up the extracted bundle dir on exit.
         process.exit(0);
       } else {
         // ── stdio transport (default) ──
@@ -308,9 +310,21 @@ export async function serve(serverArgs: string[], options: ServeOptions): Promis
           serveConfig.encryption = userConfigValues.encryption as EncryptionMode;
         }
       }
+
+      // The extracted bundle dir is now owned by the gateway spawned below; it
+      // must persist until the gateway shuts down, so keep `finally` from
+      // removing it prematurely. (The cvm branch exits before reaching here.)
+      handedOffToGateway = true;
     } catch (error) {
       p.log.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
+    } finally {
+      // Guaranteed cleanup for the cvm runtime path and any setup error.
+      // The stdio path is skipped (dir handed off to the gateway below).
+      if (cleanupPath && !handedOffToGateway) {
+        p.log.message(`Cleaning up temporary bundle at ${cleanupPath}`);
+        fs.rmSync(cleanupPath, { recursive: true, force: true });
+      }
     }
   }
 

@@ -12,7 +12,7 @@ This file provides guidance to AI coding agents working on the `cvmi` CLI codeba
 | -------------------- | --------------------------------------------------------- |
 | `cvmi`               | Show banner with available commands                       |
 | `cvmi add <pkg>`     | Install skills from git repos, URLs, or local paths       |
-| `cvmi pack`          | Package an MCP server into a distributable `.mcpb` bundle |
+| `cvmi pack`          | Package an MCP server into a distributable `.cvmb` bundle |
 | `cvmi check`         | Check for available skill updates                         |
 | `cvmi update`        | Update all skills to latest versions                      |
 | `cvmi pn` / `cn`     | Compile a server to TypeScript code                       |

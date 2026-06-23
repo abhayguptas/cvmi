@@ -1,6 +1,4 @@
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const archiver = require('archiver');
+import { ZipArchive } from 'archiver';
 import { createWriteStream, existsSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import * as p from '@clack/prompts';
@@ -121,7 +119,7 @@ export async function pack(targetDir: string = '.', options: PackOptions = {}): 
   // 3. Archive Phase
   await new Promise<void>((resolvePromise, rejectPromise) => {
     const output = createWriteStream(outPath);
-    const archive = archiver('zip', {
+    const archive = new ZipArchive({
       zlib: { level: 9 }, // maximum compression
     });
 
