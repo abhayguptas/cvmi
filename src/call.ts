@@ -15,6 +15,13 @@ import { generatePrivateKey, normalizePrivateKey, normalizePublicKey } from './u
 import { BOLD, CYAN, DIM, RESET, TEXT } from './constants/ui.ts';
 import { renderDefaultResult } from './call/render-result.ts';
 import { renderSchemaProperties, renderToolSchema } from './call/render-schema.ts';
+import {
+  withClientPayments,
+  PMI_BITCOIN_LIGHTNING_BOLT11,
+  PAYMENT_REQUIRED_ERROR_CODE,
+} from '@contextvm/sdk/payments';
+import type { PaymentInteractionMode } from '@contextvm/sdk/payments';
+import { CliPaymentHandler } from './payments/cli-payment-handler.ts';
 
 const HEX_PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
 
@@ -37,6 +44,7 @@ export interface CallOptions {
   prettyRaw?: boolean;
   extract?: string;
   help?: boolean;
+  paymentMode?: PaymentInteractionMode;
 }
 
 export interface ParseCallResult {
@@ -56,6 +64,7 @@ export interface ParseCallResult {
   showServerDetails: boolean;
   config: string | undefined;
   unknownFlags: string[];
+  paymentMode: PaymentInteractionMode;
 }
 
 interface ResolvedServerTarget {
@@ -118,6 +127,7 @@ export function parseCallArgs(args: string[]): ParseCallResult {
     showServerDetails: false,
     config: undefined,
     unknownFlags: [],
+    paymentMode: 'transparent',
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -167,6 +177,13 @@ export function parseCallArgs(args: string[]): ParseCallResult {
       result.isStateless = false;
     } else if (arg === '--details') {
       result.showServerDetails = true;
+    } else if (arg === '--payment-mode') {
+      const value = consumeValue('--payment-mode');
+      if (value === 'transparent' || value === 'explicit_gating') {
+        result.paymentMode = value;
+      } else {
+        result.unknownFlags.push(`--payment-mode${value ? ` (${value})` : ''}`);
+      }
     } else if (arg.startsWith('--')) {
       result.unknownFlags.push(arg);
     } else if (!result.server) {
@@ -511,8 +528,18 @@ async function createRemoteClient(target: ResolvedServerTarget, options: CallOpt
     logLevel: options.debug ? 'debug' : 'silent',
   });
 
+  const cliHandler = new CliPaymentHandler({
+    pmi: PMI_BITCOIN_LIGHTNING_BOLT11,
+    verbose: options.verbose,
+  });
+
+  const paidTransport = withClientPayments(transport, {
+    handlers: [cliHandler],
+    paymentInteraction: options.paymentMode ?? 'transparent',
+  });
+
   const client = new Client({ name: 'cvmi', version: '0.1.0' });
-  await client.connect(transport);
+  await client.connect(paidTransport);
 
   return {
     client,
@@ -718,6 +745,12 @@ function isMissingToolInvocationError(error: unknown): boolean {
   return /tool.+not found|unknown tool|method not found|-32601/i.test(error.message);
 }
 
+function isPaymentRequiredError(error: unknown): boolean {
+  return (
+    error instanceof Error && 'code' in error && (error as any).code === PAYMENT_REQUIRED_ERROR_CODE
+  );
+}
+
 export async function call(
   serverArg: string | undefined,
   capabilityArg: string | undefined,
@@ -793,6 +826,10 @@ export async function call(
       );
     } catch (error) {
       if (!isMissingToolInvocationError(error)) {
+        if (options.paymentMode === 'explicit_gating' && isPaymentRequiredError(error)) {
+          console.log(JSON.stringify((error as any).data, null, 2));
+          process.exit(2);
+        }
         throw error;
       }
 
@@ -845,6 +882,7 @@ ${BOLD}Options:${RESET}
   --private-key <key>     Your Nostr private key (hex/nsec format, overrides env, auto-generated if not provided)
   --relays <urls>         Comma-separated relay URLs
   --encryption-mode       Encryption mode: optional, required, disabled
+  --payment-mode          Payment interaction mode: transparent (default), explicit_gating
   --stateless             Enable stateless transport mode (default)
   --stateful              Disable stateless transport mode
   --details               Show resolved server identity and relay details during inspection
