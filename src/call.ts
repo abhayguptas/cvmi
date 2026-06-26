@@ -15,11 +15,7 @@ import { generatePrivateKey, normalizePrivateKey, normalizePublicKey } from './u
 import { BOLD, CYAN, DIM, RESET, TEXT } from './constants/ui.ts';
 import { renderDefaultResult } from './call/render-result.ts';
 import { renderSchemaProperties, renderToolSchema } from './call/render-schema.ts';
-import {
-  withClientPayments,
-  PMI_BITCOIN_LIGHTNING_BOLT11,
-  PAYMENT_REQUIRED_ERROR_CODE,
-} from '@contextvm/sdk/payments';
+import { withClientPayments, PMI_BITCOIN_LIGHTNING_BOLT11 } from '@contextvm/sdk/payments';
 import type { PaymentInteractionMode } from '@contextvm/sdk/payments';
 import { CliPaymentHandler } from './payments/cli-payment-handler.ts';
 
@@ -746,9 +742,8 @@ function isMissingToolInvocationError(error: unknown): boolean {
 }
 
 function isPaymentRequiredError(error: unknown): boolean {
-  return (
-    error instanceof Error && 'code' in error && (error as any).code === PAYMENT_REQUIRED_ERROR_CODE
-  );
+  // CEP-8 Payment Required JSON-RPC error code
+  return error instanceof Error && 'code' in error && (error as any).code === -32042;
 }
 
 export async function call(
