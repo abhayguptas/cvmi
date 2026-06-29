@@ -1052,18 +1052,27 @@ async function main(): Promise<void> {
         break;
       }
 
-      await call(parsed.server, parsed.capability, parsed.input, {
-        debug: parsed.debug,
-        verbose: parsed.verbose,
-        raw: parsed.raw,
-        help: parsed.help,
-        showServerDetails: parsed.showServerDetails,
-        privateKey: parsed.privateKey,
-        relays: parsed.relays,
-        encryption: parsed.encryption,
-        isStateless: parsed.isStateless,
-        config: parsed.config,
-      });
+      try {
+        await call(parsed.server, parsed.capability, parsed.input, {
+          debug: parsed.debug,
+          verbose: parsed.verbose,
+          raw: parsed.raw,
+          help: parsed.help,
+          showServerDetails: parsed.showServerDetails,
+          privateKey: parsed.privateKey,
+          relays: parsed.relays,
+          encryption: parsed.encryption,
+          isStateless: parsed.isStateless,
+          config: parsed.config,
+          paymentMode: parsed.paymentMode,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === 'ExplicitGatingError') {
+          console.log(JSON.stringify((error as any).data, null, 2));
+          process.exit(2);
+        }
+        throw error;
+      }
       process.exit(0);
       break;
     }

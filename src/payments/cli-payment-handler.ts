@@ -10,11 +10,9 @@ import { BOLD, CYAN, DIM, RESET, TEXT } from '../constants/ui.ts';
  */
 export class CliPaymentHandler implements PaymentHandler {
   public readonly pmi: string;
-  private readonly verbose: boolean;
 
-  constructor(options: { pmi: string; verbose?: boolean }) {
+  constructor(options: { pmi: string }) {
     this.pmi = options.pmi;
-    this.verbose = options.verbose ?? false;
   }
 
   canHandle(_req: PaymentHandlerRequest): boolean {

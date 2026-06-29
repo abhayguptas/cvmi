@@ -21,6 +21,13 @@ import { CliPaymentHandler } from './payments/cli-payment-handler.ts';
 
 const HEX_PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
 
+export class ExplicitGatingError extends Error {
+  constructor(public readonly data: any) {
+    super('Payment Required');
+    this.name = 'ExplicitGatingError';
+  }
+}
+
 function looksLikeDirectServerIdentity(input: string): boolean {
   return (
     HEX_PUBKEY_PATTERN.test(input) || input.startsWith('npub1') || input.startsWith('nprofile1')
@@ -491,6 +498,7 @@ export const __test__ = {
   printServerHelp,
   printToolHelp,
   printAliasSummaries,
+  isPaymentRequiredError,
 };
 
 type RemoteClientFactory = typeof createRemoteClient;
@@ -526,7 +534,6 @@ async function createRemoteClient(target: ResolvedServerTarget, options: CallOpt
 
   const cliHandler = new CliPaymentHandler({
     pmi: PMI_BITCOIN_LIGHTNING_BOLT11,
-    verbose: options.verbose,
   });
 
   const paidTransport = withClientPayments(transport, {
@@ -752,6 +759,10 @@ export async function call(
   input: Record<string, unknown>,
   options: CallOptions
 ): Promise<void> {
+  if (process.env.LOG_ENABLED === undefined && !options.debug) {
+    process.env.LOG_ENABLED = 'false';
+  }
+
   const config = await loadConfig(
     {
       use: {
@@ -822,8 +833,7 @@ export async function call(
     } catch (error) {
       if (!isMissingToolInvocationError(error)) {
         if (options.paymentMode === 'explicit_gating' && isPaymentRequiredError(error)) {
-          console.log(JSON.stringify((error as any).data, null, 2));
-          process.exit(2);
+          throw new ExplicitGatingError((error as any).data);
         }
         throw error;
       }
