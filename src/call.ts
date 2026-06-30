@@ -15,9 +15,12 @@ import { generatePrivateKey, normalizePrivateKey, normalizePublicKey } from './u
 import { BOLD, CYAN, DIM, RESET, TEXT } from './constants/ui.ts';
 import { renderDefaultResult } from './call/render-result.ts';
 import { renderSchemaProperties, renderToolSchema } from './call/render-schema.ts';
-import { withClientPayments, PMI_BITCOIN_LIGHTNING_BOLT11 } from '@contextvm/sdk/payments';
+import { withClientPayments } from '@contextvm/sdk/payments';
 import type { PaymentInteractionMode } from '@contextvm/sdk/payments';
-import { CliPaymentHandler } from './payments/cli-payment-handler.ts';
+import {
+  paymentRequiredNotificationSchema,
+  renderPaymentRequired,
+} from './payments/cli-payment-handler.ts';
 
 const HEX_PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
 
@@ -532,16 +535,17 @@ async function createRemoteClient(target: ResolvedServerTarget, options: CallOpt
     logLevel: options.debug ? 'debug' : 'silent',
   });
 
-  const cliHandler = new CliPaymentHandler({
-    pmi: PMI_BITCOIN_LIGHTNING_BOLT11,
-  });
-
+  // PMI-agnostic: advertise no handlers, so the server sends
+  // `payment_required` for whatever rail it supports (CEP-8 no-client-PMI
+  // path). The invoice is rendered upstream via setNotificationHandler.
   const paidTransport = withClientPayments(transport, {
-    handlers: [cliHandler],
     paymentInteraction: options.paymentMode ?? 'transparent',
   });
 
   const client = new Client({ name: 'cvmi', version: '0.1.0' });
+  client.setNotificationHandler(paymentRequiredNotificationSchema, (notification) =>
+    renderPaymentRequired(notification.params)
+  );
   await client.connect(paidTransport);
 
   return {
@@ -759,9 +763,11 @@ export async function call(
   input: Record<string, unknown>,
   options: CallOptions
 ): Promise<void> {
-  if (process.env.LOG_ENABLED === undefined && !options.debug) {
-    process.env.LOG_ENABLED = 'false';
-  }
+  // LOG_ENABLED isn't set here: the SDK logger is an import-time singleton, so
+  // a runtime assignment is a no-op. The client-payments info logs that used
+  // to bracket the invoice only fired on the handler path we no longer take
+  // (PMI-agnostic now), so they're gone. An SDK `logLevel` option on
+  // withClientPayments would be the clean fix if other info logs surface.
 
   const config = await loadConfig(
     {

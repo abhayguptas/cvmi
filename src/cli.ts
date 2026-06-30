@@ -21,7 +21,7 @@ import { removeCommand, parseRemoveOptions } from './remove.ts';
 import { track } from './telemetry.ts';
 import { serve, showServeHelp } from './serve.ts';
 import { showUseHelp, use } from './use.ts';
-import { call, parseCallArgs, showCallHelp } from './call.ts';
+import { call, parseCallArgs, showCallHelp, ExplicitGatingError } from './call.ts';
 import { discover, parseDiscoverArgs, showDiscoverHelp } from './discover.ts';
 import { runSync, parseSyncOptions } from './sync.ts';
 import { runCn } from './cn/index.ts';
@@ -1067,8 +1067,8 @@ async function main(): Promise<void> {
           paymentMode: parsed.paymentMode,
         });
       } catch (error) {
-        if (error instanceof Error && error.name === 'ExplicitGatingError') {
-          console.log(JSON.stringify((error as any).data, null, 2));
+        if (error instanceof ExplicitGatingError) {
+          console.log(JSON.stringify(error.data, null, 2));
           process.exit(2);
         }
         throw error;

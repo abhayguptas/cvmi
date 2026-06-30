@@ -1,18 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CliPaymentHandler } from './cli-payment-handler.ts';
+import { renderPaymentRequired } from './cli-payment-handler.ts';
 
-describe('CliPaymentHandler', () => {
-  it('should render invoice to stderr', async () => {
-    const handler = new CliPaymentHandler({ pmi: 'test-pmi' });
+describe('renderPaymentRequired', () => {
+  it('should render invoice to stderr', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await handler.handle({
-      amount: '50',
+    renderPaymentRequired({
+      amount: 50,
       description: 'Test payment',
       pmi: 'test-pmi',
       ttl: 300,
       pay_req: 'lnbc1...',
-    } as any);
+    });
 
     expect(consoleErrorSpy).toHaveBeenCalled();
     const calls = consoleErrorSpy.mock.calls.map((c) => c[0]).join('\n');
