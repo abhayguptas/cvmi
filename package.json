@@ -93,7 +93,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@contextvm/sdk": "^0.13.4",
+    "@contextvm/sdk": "^0.13.5",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "json-schema-to-typescript": "15.0.4",
     "nostr-tools": "^2.23.3",

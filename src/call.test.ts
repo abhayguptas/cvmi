@@ -9,6 +9,7 @@ import {
   setCreateRemoteClientFactoryForTests,
 } from './call.ts';
 import { stripAnsi } from './test-utils.ts';
+import { PAYMENT_REQUIRED_ERROR_CODE } from '@contextvm/sdk/payments/constants';
 
 function captureConsoleOutput(render: () => void): string[] {
   const output: string[] = [];
@@ -850,7 +851,7 @@ Or pass a direct server identity in hex, npub, or nprofile format.]`);
   it('throws ExplicitGatingError for -32042 in explicit_gating mode', async () => {
     const listTools = vi.fn().mockResolvedValue({ tools: [] });
     const mockError = new Error('Payment Required') as any;
-    mockError.code = -32042;
+    mockError.code = PAYMENT_REQUIRED_ERROR_CODE;
     mockError.data = { foo: 'bar' };
     const callTool = vi.fn().mockRejectedValue(mockError);
     const close = vi.fn().mockResolvedValue(undefined);
@@ -939,12 +940,12 @@ Or pass a direct server identity in hex, npub, or nprofile format.]`);
   describe('isPaymentRequiredError', () => {
     it('returns true for an error with code -32042', () => {
       const error = new Error('Payment Required') as any;
-      error.code = -32042;
+      error.code = PAYMENT_REQUIRED_ERROR_CODE;
       expect(__test__.isPaymentRequiredError(error)).toBe(true);
     });
 
     it('returns false for non-error objects', () => {
-      expect(__test__.isPaymentRequiredError({ code: -32042 })).toBe(false);
+      expect(__test__.isPaymentRequiredError({ code: PAYMENT_REQUIRED_ERROR_CODE })).toBe(false);
       expect(__test__.isPaymentRequiredError(null)).toBe(false);
     });
 

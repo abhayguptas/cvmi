@@ -21,6 +21,7 @@ import {
   paymentRequiredNotificationSchema,
   renderPaymentRequired,
 } from './payments/cli-payment-handler.ts';
+import { PAYMENT_REQUIRED_ERROR_CODE } from '@contextvm/sdk/payments/constants';
 
 const HEX_PUBKEY_PATTERN = /^[0-9a-f]{64}$/i;
 
@@ -754,7 +755,9 @@ function isMissingToolInvocationError(error: unknown): boolean {
 
 function isPaymentRequiredError(error: unknown): boolean {
   // CEP-8 Payment Required JSON-RPC error code
-  return error instanceof Error && 'code' in error && (error as any).code === -32042;
+  return (
+    error instanceof Error && 'code' in error && (error as any).code === PAYMENT_REQUIRED_ERROR_CODE
+  );
 }
 
 export async function call(
