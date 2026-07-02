@@ -5,6 +5,7 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { NostrMCPProxy, PrivateKeySigner, EncryptionMode } from '@contextvm/sdk';
+import type { PaymentInteractionMode } from '@contextvm/sdk/payments';
 import { loadConfig, getUseConfig, DEFAULT_RELAYS } from './config/index.ts';
 import { generatePrivateKey, normalizePrivateKey } from './utils/crypto.ts';
 import { waitForShutdownSignal } from './utils/process.ts';
@@ -19,6 +20,7 @@ export interface UseOptions {
   encryption?: EncryptionMode;
   verbose?: boolean;
   persistPrivateKey?: boolean;
+  paymentMode?: PaymentInteractionMode;
 }
 
 /**
@@ -85,6 +87,9 @@ export async function use(serverPubkeyArg: string | undefined, options: UseOptio
   const mcpTransport = new StdioServerTransport();
 
   // Create proxy
+  // ponytail: default explicit_gating for `use` (agent host over stdio) — a priced
+  // tool surfaces a clean -32042 error the agent can relay, instead of streaming an
+  // invoice no human is watching. `call` defaults to transparent (human in terminal).
   const proxy = new NostrMCPProxy({
     mcpHostTransport: mcpTransport,
     nostrTransportOptions: {
@@ -94,6 +99,7 @@ export async function use(serverPubkeyArg: string | undefined, options: UseOptio
       encryptionMode: useConfig.encryption,
       logLevel: options.verbose ? 'debug' : 'info',
     },
+    paymentOptions: { paymentInteraction: options.paymentMode ?? 'explicit_gating' },
   });
 
   // Start proxy
@@ -126,6 +132,7 @@ ${BOLD}Options:${RESET}
   --persist-private-key   Save private key to .env file for future use
   --relays <urls>         Comma-separated relay URLs (default: wss://relay.contextvm.org,wss://cvm.otherstuff.ai)
   --encryption-mode       Encryption mode: optional, required, disabled (default: optional)
+  --payment-mode          Payment interaction: explicit_gating (default), transparent
   --verbose               Enable verbose logging
   --help, -h              Show this help message
 
