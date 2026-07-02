@@ -12,9 +12,15 @@ import {
 } from './config/index.ts';
 import type { CvmiConfig, ServerTargetConfig } from './config/index.ts';
 import { generatePrivateKey, normalizePrivateKey, normalizePublicKey } from './utils/crypto.ts';
-import { BOLD, CYAN, DIM, RESET, TEXT } from './constants/ui.ts';
+import { BOLD, CYAN, DIM, RESET, TEXT, YELLOW } from './constants/ui.ts';
 import { renderDefaultResult } from './call/render-result.ts';
 import { renderSchemaProperties, renderToolSchema } from './call/render-schema.ts';
+import {
+  parseCapabilityPricing,
+  formatPrice,
+  PRICING_FOOTNOTE,
+  type CapabilityPricing,
+} from './call/pricing.ts';
 import { withClientPayments } from '@contextvm/sdk/payments';
 import type { PaymentInteractionMode } from '@contextvm/sdk/payments';
 import {
@@ -470,7 +476,7 @@ function resolveServerMetadataContext(
   return target.description ?? metadata?.about;
 }
 
-function renderToolList(tools: Tool[]): void {
+function renderToolList(tools: Tool[], pricing?: CapabilityPricing): void {
   if (tools.length === 0) {
     console.log(`  ${DIM}(no tools exposed)${RESET}`);
     return;
@@ -478,8 +484,9 @@ function renderToolList(tools: Tool[]): void {
 
   for (const tool of tools) {
     const signature = formatToolInputSignature(tool);
+    const price = pricing?.byTool.get(tool.name);
     console.log(
-      `  ${CYAN}•${RESET} ${tool.name}${signature ? ` ${DIM}${signature}${RESET}` : ''}${tool.description ? ` ${DIM}— ${tool.description}${RESET}` : ''}`
+      `  ${CYAN}•${RESET} ${tool.name}${signature ? ` ${DIM}${signature}${RESET}` : ''}${tool.description ? ` ${DIM}— ${tool.description}${RESET}` : ''}${price ? ` ${YELLOW}(${formatPrice(price)})${RESET}` : ''}`
     );
   }
 }
@@ -551,6 +558,7 @@ async function createRemoteClient(target: ResolvedServerTarget, options: CallOpt
 
   return {
     client,
+    transport,
     metadata: {
       name: transport.getServerInitializeName(),
       about: transport.getServerInitializeAbout(),
@@ -568,7 +576,8 @@ function printServerSummary(
   target: ResolvedServerTarget,
   tools: Tool[],
   metadata?: ServerMetadata,
-  options: Pick<CallOptions, 'showServerDetails'> = {}
+  options: Pick<CallOptions, 'showServerDetails'> = {},
+  pricing?: CapabilityPricing
 ): void {
   const shouldShowDetails = options.showServerDetails === true;
   const primaryLabel = resolveServerMetadataLabel(target, metadata);
@@ -579,6 +588,10 @@ function printServerSummary(
 
   if (primaryContext) {
     printSummaryRow('About', primaryContext);
+  }
+
+  if (pricing && pricing.pmis.length > 0) {
+    printSummaryRow('Payments', pricing.pmis.join(', '));
   }
 
   if (shouldShowDetails) {
@@ -599,19 +612,23 @@ function printServerSummary(
   }
 
   console.log();
-  renderToolList(tools);
+  renderToolList(tools, pricing);
+  if (pricing && pricing.byTool.size > 0) {
+    console.log(`  ${DIM}${PRICING_FOOTNOTE}${RESET}`);
+  }
 }
 
 function printServerHelp(
   target: ResolvedServerTarget,
   tools: Tool[],
   metadata?: ServerMetadata,
-  options: Pick<CallOptions, 'showServerDetails'> = {}
+  options: Pick<CallOptions, 'showServerDetails'> = {},
+  pricing?: CapabilityPricing
 ): void {
   printSection('Usage');
   console.log(`  cvmi call <server> <tool> [key=value ...] [options]`);
   console.log();
-  printServerSummary(target, tools, metadata, options);
+  printServerSummary(target, tools, metadata, options, pricing);
   console.log();
   printSection('Invoke');
   console.log(
@@ -636,11 +653,19 @@ function printAliasSummaries(aliases: CompactAliasSummary[]): void {
   console.log();
 }
 
-function printToolHelp(target: ResolvedServerTarget, tool: Tool): void {
+function printToolHelp(
+  target: ResolvedServerTarget,
+  tool: Tool,
+  pricing?: CapabilityPricing
+): void {
   printSection('Usage');
   console.log(`  cvmi call ${target.input} ${tool.name} [key=value ...] [options]`);
   if (tool.description) {
     console.log(`  ${tool.description}`);
+  }
+  const price = pricing?.byTool.get(tool.name);
+  if (price) {
+    console.log(`  ${YELLOW}${formatPrice(price)}${RESET} ${DIM}— ${PRICING_FOOTNOTE}${RESET}`);
   }
   console.log();
   printSection('Input');
@@ -732,7 +757,8 @@ function printMissingToolGuidance(
   capabilityArg: string,
   tools: Tool[],
   metadata?: ServerMetadata,
-  options: Pick<CallOptions, 'showServerDetails'> = {}
+  options: Pick<CallOptions, 'showServerDetails'> = {},
+  pricing?: CapabilityPricing
 ): void {
   console.error(
     buildMissingToolError(
@@ -742,7 +768,7 @@ function printMissingToolGuidance(
     ).message
   );
   console.error();
-  printServerHelp(target, tools, metadata, options);
+  printServerHelp(target, tools, metadata, options, pricing);
 }
 
 function isMissingToolInvocationError(error: unknown): boolean {
@@ -802,7 +828,10 @@ export async function call(
       logVerbose(options.verbose, 'Discovering tools...');
       const toolsResult = await remote.client.listTools();
       const tools = toolsResult.tools;
-      printServerHelp(target, tools, remote.metadata, options);
+      const pricing = parseCapabilityPricing(
+        remote.transport.getServerToolsListEvent() ?? remote.transport.getServerInitializeEvent()
+      );
+      printServerHelp(target, tools, remote.metadata, options, pricing);
       return;
     }
 
@@ -810,6 +839,9 @@ export async function call(
     if (options.help) {
       logVerbose(options.verbose, 'Discovering tools...');
       const toolsResult = await remote.client.listTools();
+      const pricing = parseCapabilityPricing(
+        remote.transport.getServerToolsListEvent() ?? remote.transport.getServerInitializeEvent()
+      );
       const tool = toolsResult.tools.find((entry) => entry.name === toolName);
       if (!tool) {
         printMissingToolGuidance(
@@ -817,11 +849,12 @@ export async function call(
           capabilityArg,
           toolsResult.tools,
           remote.metadata,
-          options
+          options,
+          pricing
         );
         process.exit(1);
       }
-      printToolHelp(target, tool);
+      printToolHelp(target, tool, pricing);
       return;
     }
 
@@ -849,7 +882,17 @@ export async function call(
 
       logVerbose(options.verbose, 'Discovering tools...');
       const toolsResult = await remote.client.listTools();
-      printMissingToolGuidance(target, capabilityArg, toolsResult.tools, remote.metadata, options);
+      const pricing = parseCapabilityPricing(
+        remote.transport.getServerToolsListEvent() ?? remote.transport.getServerInitializeEvent()
+      );
+      printMissingToolGuidance(
+        target,
+        capabilityArg,
+        toolsResult.tools,
+        remote.metadata,
+        options,
+        pricing
+      );
       process.exit(1);
     }
 

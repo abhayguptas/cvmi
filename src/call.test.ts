@@ -609,6 +609,10 @@ Or pass a direct server identity in hex, npub, or nprofile format.]`);
           listTools,
           callTool,
         },
+        transport: {
+          getServerToolsListEvent: () => undefined,
+          getServerInitializeEvent: () => undefined,
+        },
         metadata: {},
         close,
       }) as never
