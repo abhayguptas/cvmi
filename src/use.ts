@@ -162,6 +162,13 @@ ${BOLD}SDK Logging (set via environment, not config files):${RESET}
   .env file format (for private keys):
     CVMI_USE_PRIVATE_KEY=nsec1...
 
+${BOLD}Payments (CEP-8):${RESET} only relevant when the remote server gates tools behind payment.
+  --payment-mode explicit_gating (default) | transparent
+    explicit_gating  A priced tool surfaces a -32042 "Payment Required" error carrying the
+                     payment schema, so the host (e.g. an agent) can handle it. Default,
+                     since nothing watches stdio for an invoice.
+    transparent      Streams a lightning invoice notification for a human to pay.
+
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} cvmi use npub1q... ${DIM}# connect to remote server by public key${RESET}
   ${DIM}$${RESET} cvmi use nprofile1q... ${DIM}# connect using an nprofile with relay hints${RESET}

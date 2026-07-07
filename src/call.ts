@@ -961,6 +961,13 @@ ${BOLD}Aliases & config:${RESET}
   Use ${TEXT}cvmi config add <alias> <pubkey>${RESET} to save an alias, and ${TEXT}cvmi config list${RESET} to inspect available aliases
   Use ${TEXT}cvmi call <alias>${RESET} to inspect a server and ${TEXT}cvmi call <alias> <tool>${RESET} to invoke a tool
 
+${BOLD}Payments (CEP-8):${RESET} only relevant when the server gates the called tool behind payment.
+  --payment-mode transparent (default) | explicit_gating
+    transparent     Renders the lightning invoice to stderr and waits for out-of-band
+                    settlement (for humans in a terminal).
+    explicit_gating Prints the raw payment schema as JSON on stdout and exits with code 2
+                    (for agents: parse stdout, pay out-of-band, then retry).
+
 ${BOLD}Examples:${RESET}
   ${DIM}$${RESET} cvmi call weather
   ${DIM}$${RESET} cvmi call weather get_current --help

@@ -8,8 +8,8 @@ importers:
   .:
     dependencies:
       '@contextvm/sdk':
-        specifier: ^0.13.6
-        version: 0.13.6(typescript@5.9.3)
+        specifier: ^0.13.7
+        version: 0.13.7(typescript@5.9.3)
       '@modelcontextprotocol/sdk':
         specifier: ^1.27.1
         version: 1.27.1(zod@4.3.6)
@@ -250,10 +250,10 @@ packages:
     peerDependencies:
       zod: ^3.25 || ^4.0
 
-  '@contextvm/sdk@0.13.6':
+  '@contextvm/sdk@0.13.7':
     resolution:
       {
-        integrity: sha512-m67xpauk6w2YD4R/wDBdNBqNcPbXPgtbKx/gUS3/90UBJEyT9/Mt4/hGh9B/nX9y07HT+LUAfS9BC/0wYJWdhg==,
+        integrity: sha512-Y4fKGVYJzOTHM0bNuLE9+HzDWvr+pCmQgrsn4Wh2pT73ThwNIhvLOWw/GJygNPOZnQSQ3h3v46efwYto/g/oBQ==,
       }
     engines: { bun: '>=1.2.0' }
     peerDependencies:
@@ -3700,7 +3700,7 @@ snapshots:
       zod: 4.4.3
       zod-to-json-schema: 3.25.1(zod@4.4.3)
 
-  '@contextvm/sdk@0.13.6(typescript@5.9.3)':
+  '@contextvm/sdk@0.13.7(typescript@5.9.3)':
     dependencies:
       '@contextvm/mcp-sdk': 1.30.0(zod@4.4.3)
       '@noble/hashes': 2.2.0
