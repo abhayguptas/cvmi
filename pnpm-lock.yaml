@@ -8,11 +8,11 @@ importers:
   .:
     dependencies:
       '@contextvm/sdk':
-        specifier: ^0.13.7
-        version: 0.13.7(typescript@5.9.3)
+        specifier: ^0.13.9
+        version: 0.13.9(typescript@5.9.3)
       '@modelcontextprotocol/sdk':
-        specifier: ^1.27.1
-        version: 1.27.1(zod@4.3.6)
+        specifier: ^1.29
+        version: 1.29.0(zod@4.3.6)
       json-schema-to-typescript:
         specifier: 15.0.4
         version: 15.0.4
@@ -250,10 +250,10 @@ packages:
     peerDependencies:
       zod: ^3.25 || ^4.0
 
-  '@contextvm/sdk@0.13.7':
+  '@contextvm/sdk@0.13.9':
     resolution:
       {
-        integrity: sha512-Y4fKGVYJzOTHM0bNuLE9+HzDWvr+pCmQgrsn4Wh2pT73ThwNIhvLOWw/GJygNPOZnQSQ3h3v46efwYto/g/oBQ==,
+        integrity: sha512-YmVrO2z5ILAORLEvFogk4gEnjpGMMMGHhdGXdxJlxaIMbXCusjwLzugs9XWEUMeuLgGfIWOEL9ZURuTm4RXrNw==,
       }
     engines: { bun: '>=1.2.0' }
     peerDependencies:
@@ -587,10 +587,10 @@ packages:
         integrity: sha512-fo+QhuU3qE/2TQMQmbVMqaQ6EWbMhi4ABWP+O4AM1NqPBuy0OrApV5LO6BrrgnhtAHS2NH6RrVk9OL181tTi8A==,
       }
 
-  '@modelcontextprotocol/sdk@1.27.1':
+  '@modelcontextprotocol/sdk@1.29.0':
     resolution:
       {
-        integrity: sha512-sr6GbP+4edBwFndLbM60gf07z0FQ79gaExpnsjMGePXqFcSSb7t6iscpjk9DhFhwd+mTEQrzNafGP8/iGGFYaA==,
+        integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==,
       }
     engines: { node: '>=18' }
     peerDependencies:
@@ -3700,7 +3700,7 @@ snapshots:
       zod: 4.4.3
       zod-to-json-schema: 3.25.1(zod@4.4.3)
 
-  '@contextvm/sdk@0.13.7(typescript@5.9.3)':
+  '@contextvm/sdk@0.13.9(typescript@5.9.3)':
     dependencies:
       '@contextvm/mcp-sdk': 1.30.0(zod@4.4.3)
       '@noble/hashes': 2.2.0
@@ -3862,7 +3862,7 @@ snapshots:
       globby: 11.1.0
       read-yaml-file: 1.1.0
 
-  '@modelcontextprotocol/sdk@1.27.1(zod@4.3.6)':
+  '@modelcontextprotocol/sdk@1.29.0(zod@4.3.6)':
     dependencies:
       '@hono/node-server': 1.19.11(hono@4.12.8)
       ajv: 8.18.0
