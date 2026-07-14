@@ -485,9 +485,11 @@ function renderToolList(tools: Tool[], pricing?: CapabilityPricing): void {
   for (const tool of tools) {
     const signature = formatToolInputSignature(tool);
     const price = pricing?.byTool.get(tool.name);
-    console.log(
-      `  ${CYAN}•${RESET} ${tool.name}${signature ? ` ${DIM}${signature}${RESET}` : ''}${tool.description ? ` ${DIM}— ${tool.description}${RESET}` : ''}${price ? ` ${YELLOW}(${formatPrice(price)})${RESET}` : ''}`
-    );
+    const parts = [`  ${CYAN}•${RESET} ${tool.name}`];
+    if (signature) parts.push(` ${DIM}${signature}${RESET}`);
+    if (tool.description) parts.push(` ${DIM}— ${tool.description}${RESET}`);
+    if (price) parts.push(` ${YELLOW}(${formatPrice(price)})${RESET}`);
+    console.log(parts.join(''));
   }
 }
 
@@ -513,6 +515,18 @@ export const __test__ = {
 };
 
 type RemoteClientFactory = typeof createRemoteClient;
+type RemoteClient = Awaited<ReturnType<typeof createRemoteClient>>;
+
+/** List tools + advertised pricing in one round-trip; always fetched together. */
+async function discoverTools(
+  remote: RemoteClient
+): Promise<{ tools: Tool[]; pricing: CapabilityPricing }> {
+  const toolsResult = await remote.client.listTools();
+  const pricing = parseCapabilityPricing(
+    remote.transport.getServerToolsListEvent() ?? remote.transport.getServerInitializeEvent()
+  );
+  return { tools: toolsResult.tools, pricing };
+}
 
 let createRemoteClientFactory: RemoteClientFactory = createRemoteClient;
 
@@ -826,11 +840,7 @@ export async function call(
   try {
     if (!capabilityArg) {
       logVerbose(options.verbose, 'Discovering tools...');
-      const toolsResult = await remote.client.listTools();
-      const tools = toolsResult.tools;
-      const pricing = parseCapabilityPricing(
-        remote.transport.getServerToolsListEvent() ?? remote.transport.getServerInitializeEvent()
-      );
+      const { tools, pricing } = await discoverTools(remote);
       printServerHelp(target, tools, remote.metadata, options, pricing);
       return;
     }
@@ -838,20 +848,10 @@ export async function call(
     const toolName = resolveToolName(capabilityArg);
     if (options.help) {
       logVerbose(options.verbose, 'Discovering tools...');
-      const toolsResult = await remote.client.listTools();
-      const pricing = parseCapabilityPricing(
-        remote.transport.getServerToolsListEvent() ?? remote.transport.getServerInitializeEvent()
-      );
-      const tool = toolsResult.tools.find((entry) => entry.name === toolName);
+      const { tools, pricing } = await discoverTools(remote);
+      const tool = tools.find((entry) => entry.name === toolName);
       if (!tool) {
-        printMissingToolGuidance(
-          target,
-          capabilityArg,
-          toolsResult.tools,
-          remote.metadata,
-          options,
-          pricing
-        );
+        printMissingToolGuidance(target, capabilityArg, tools, remote.metadata, options, pricing);
         process.exit(1);
       }
       printToolHelp(target, tool, pricing);
@@ -881,18 +881,8 @@ export async function call(
       }
 
       logVerbose(options.verbose, 'Discovering tools...');
-      const toolsResult = await remote.client.listTools();
-      const pricing = parseCapabilityPricing(
-        remote.transport.getServerToolsListEvent() ?? remote.transport.getServerInitializeEvent()
-      );
-      printMissingToolGuidance(
-        target,
-        capabilityArg,
-        toolsResult.tools,
-        remote.metadata,
-        options,
-        pricing
-      );
+      const { tools, pricing } = await discoverTools(remote);
+      printMissingToolGuidance(target, capabilityArg, tools, remote.metadata, options, pricing);
       process.exit(1);
     }
 

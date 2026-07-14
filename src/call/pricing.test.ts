@@ -31,6 +31,17 @@ describe('parseCapabilityPricing', () => {
     expect(byTool.get('relays/search')).toEqual({ amount: 3, maxAmount: 5, currencyUnit: 'sats' });
   });
 
+  it('rejects negative and out-of-order range prices', () => {
+    const { byTool } = parseCapabilityPricing({
+      tags: [
+        tag('cap', 'tool:neg', '-5', 'sats'),
+        tag('cap', 'tool:backwards', '5-3', 'sats'),
+        tag('cap', 'tool:neghi', '3--5', 'sats'),
+      ],
+    });
+    expect(byTool.size).toBe(0);
+  });
+
   it('ignores non-tool cap identifiers (prompt:/resource:) and malformed caps', () => {
     const { byTool } = parseCapabilityPricing({
       tags: [

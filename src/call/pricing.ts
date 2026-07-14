@@ -57,18 +57,21 @@ export function parseCapabilityPricing(event: unknown): CapabilityPricing {
     if (typeof price !== 'string' || typeof currencyUnit !== 'string') continue;
     if (byTool.has(name)) continue; // first wins; servers shouldn't dupe
 
+    // CEP-8: price is a fixed integer or "<min>-<max>" range (min <= max).
+    // A leading dash ("-5") is not a range separator; negatives aren't valid
+    // advertised prices (no credit semantics), so reject rather than coerce.
     const dash = price.indexOf('-');
     let amount: number;
     let maxAmount: number | undefined;
-    if (dash >= 0) {
+    if (dash > 0) {
       const lo = Number(price.slice(0, dash));
       const hi = Number(price.slice(dash + 1));
-      if (!Number.isFinite(lo) || !Number.isFinite(hi)) continue;
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo < 0 || hi < lo) continue;
       amount = lo;
       maxAmount = hi;
     } else {
       const n = Number(price);
-      if (!Number.isFinite(n)) continue;
+      if (!Number.isFinite(n) || n < 0) continue;
       amount = n;
     }
     byTool.set(name, { amount, maxAmount, currencyUnit });
